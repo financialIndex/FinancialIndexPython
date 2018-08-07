@@ -40,7 +40,7 @@ class NewsPipeline(object):
 
     def process_item(self, item, spider):
         if item['url'] in self.url_list:
-            print('______________重复新闻')
+            print('______________重复新闻________________')
             return
         sqltext = self.source_messageInsert.format(title=pymysql.escape_string(item['title']),
                                                    url=pymysql.escape_string(item['url']),

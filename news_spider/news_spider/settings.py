@@ -12,7 +12,7 @@ import random
 
 BOT_NAME = 'news_spider'
 
-CLOSESPIDER_ITEMCOUNT = 30
+CLOSESPIDER_ITEMCOUNT = 10
 SPIDER_MODULES = ['news_spider.spiders']
 NEWSPIDER_MODULE = 'news_spider.spiders'
 LOG_LEVEL = 'ERROR'
@@ -40,7 +40,7 @@ DOWNLOADER_MIDDLEWARES = {
 }
 
 ITEM_PIPELINES = {
-    # 'news_spider.pipelines.NewsPipeline': 300,
+    'news_spider.pipelines.NewsPipeline': 300,
 }
 
 DUPEFILTER_CLASS = 'scrapy_splash.SplashAwareDupeFilter'

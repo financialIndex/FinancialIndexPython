@@ -10,13 +10,7 @@ from scrapy import Request
 from news_spider.items import NewsItem
 import time
 import datetime
-
-# 阈值
-threshold = 0.15
-# 过期的天数
-days = 3
-# 最大页数
-maxPage = 10
+import configparser
 
 
 # 爬取新浪网
@@ -24,10 +18,18 @@ class sina_news_Spider(scrapy.Spider):
     name = 'sina_news'
     allowed_domains = ['news.sina.com.cn']
     start_urls = ['http://news.sina.com.cn/roll/']
-    category_urls = []
-    s = similarity.TextSimilarity('news_spider/spiders/target', 'news_spider/spiders/stopwords.txt')
-    # 扫描的批次
-    scan_id = str(time.time())
+
+    def __init__(self):
+        cf = load_config()
+        self.threshold = float(cf.get('Section', 'threshold'))
+        self.days = int(cf.get('Section', 'days'))
+        self.maxPage = int(cf.get('Section', 'maxPage'))
+        target_path = cf.get('Section', 'target_path')
+        stopwords_path = cf.get('Section', 'stopwords_path')
+        self.s = similarity.TextSimilarity(target_path, stopwords_path)
+        # 扫描的批次
+        self.scan_id = str(time.time())
+        self.category_urls = []
 
     # 将请求转换成splashRequest
     def start_requests(self):
@@ -63,7 +65,7 @@ class sina_news_Spider(scrapy.Spider):
         # 获取page
         page = int(str(url)[-1])
         page += 1
-        if page < maxPage:
+        if page < self.maxPage:
             next_url = str(url)[:-1] + str(page)
             yield SplashRequest(next_url, self.parse_page, args={'wait': 1}, dont_filter=True)
 
@@ -119,7 +121,7 @@ class sina_news_Spider(scrapy.Spider):
 
         # 封装成item
         similar_list = self.s.cal_similarities(article)
-        if max(similar_list) > threshold:
+        if max(similar_list) > self.threshold:
             item = NewsItem()
             item['title'] = title.strip()
             item['url'] = url.strip()
@@ -141,9 +143,17 @@ class leiphone_Spider(scrapy.Spider):
     name = 'leiphone_news'
     allowed_domains = ['www.leiphone.com']
     start_urls = ['https://www.leiphone.com/site/AjaxLoad/page/1']
-    s = similarity.TextSimilarity('news_spider/spiders/target', 'news_spider/spiders/stopwords.txt')
-    # 扫描的批次
-    scan_id = str(time.time())
+
+    def __init__(self):
+        cf = load_config()
+        self.threshold = float(cf.get('Section', 'threshold'))
+        self.days = int(cf.get('Section', 'days'))
+        self.maxPage = int(cf.get('Section', 'maxPage'))
+        target_path = cf.get('Section', 'target_path')
+        stopwords_path = cf.get('Section', 'stopwords_path')
+        self.s = similarity.TextSimilarity(target_path, stopwords_path)
+        # 扫描的批次
+        self.scan_id = str(time.time())
 
     def parse(self, response):
         html = json.loads(response.body)['html']
@@ -156,7 +166,7 @@ class leiphone_Spider(scrapy.Spider):
         # 获取page
         page = int(str(url)[-1])
         page += 1
-        if page < maxPage:
+        if page < self.maxPage:
             yield scrapy.Request('https://www.leiphone.com/site/AjaxLoad/page/' + str(page))
 
     def parse_content(self, response):
@@ -167,7 +177,7 @@ class leiphone_Spider(scrapy.Spider):
                              time.localtime(time.mktime(time.strptime(date, '%Y-%m-%d %H:%M'))))
         # 终止条件
         interval = time_cmp(float(self.scan_id), date)
-        if interval > days:
+        if interval > self.days:
             print('过时')
             return
 
@@ -210,7 +220,7 @@ class leiphone_Spider(scrapy.Spider):
 
         # 封装成item
         similar_list = self.s.cal_similarities(article)
-        if max(similar_list) > threshold:
+        if max(similar_list) > self.threshold:
             item = NewsItem()
             item['ent_time'] = date
             item['title'] = title.strip()
@@ -230,9 +240,17 @@ class _36_kr_Spider(scrapy.Spider):
     name = '_36kr_news'
     page = 1
     start_urls = ['http://36kr.com/api/search-column/mainsite?per_page=20&page=' + str(page)]
-    s = similarity.TextSimilarity('news_spider/spiders/target', 'news_spider/spiders/stopwords.txt')
-    # 扫描的批次
-    scan_id = str(time.time())
+
+    def __init__(self):
+        cf = load_config()
+        self.threshold = float(cf.get('Section', 'threshold'))
+        self.days = int(cf.get('Section', 'days'))
+        self.maxPage = int(cf.get('Section', 'maxPage'))
+        target_path = cf.get('Section', 'target_path')
+        stopwords_path = cf.get('Section', 'stopwords_path')
+        self.s = similarity.TextSimilarity(target_path, stopwords_path)
+        # 扫描的批次
+        self.scan_id = str(time.time())
 
     def parse(self, response):
         data = json.loads(response.body)['data']
@@ -250,7 +268,7 @@ class _36_kr_Spider(scrapy.Spider):
         # 获取page
         page = int(str(url)[-1])
         page += 1
-        if page < maxPage:
+        if page < self.maxPage:
             next_url = str(url)[:-1] + str(page)
             yield scrapy.Request(next_url, callback=self.parse)
 
@@ -262,7 +280,7 @@ class _36_kr_Spider(scrapy.Spider):
         interval = time_cmp(float(self.scan_id), time.strftime("%Y-%m-%d %H:%M:%S",
                                                                time.localtime(time.mktime(
                                                                    time.strptime(date, "%Y-%m-%dT%H:%M:%S+08:00")))))
-        if interval > days:
+        if interval > self.days:
             print('过时')
             return
         # 获取标题
@@ -300,7 +318,7 @@ class _36_kr_Spider(scrapy.Spider):
 
         # 封装成item
         similar_list = self.s.cal_similarities(article)
-        if max(similar_list) > threshold:
+        if max(similar_list) > self.threshold:
             item = NewsItem()
             item['title'] = title.strip()
             item['url'] = response.url.strip()
@@ -452,3 +470,10 @@ def time_cmp(now_date, article_date):
     d1 = datetime.datetime.strptime(now_date, '%Y-%m-%d %H:%M:%S')
     d2 = datetime.datetime.strptime(article_date, '%Y-%m-%d %H:%M:%S')
     return (d1 - d2).days
+
+
+# 读取配置文件
+def load_config():
+    cf = configparser.ConfigParser()
+    cf.read('news_spider/spiders/config.cfg')
+    return cf
