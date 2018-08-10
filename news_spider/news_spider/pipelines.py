@@ -15,6 +15,7 @@ class NewsPipeline(object):
     source_scanInsert = '''insert into netfin_scanlog(id,net_name,status,ent_time,fail_result)
                                     values('{scan_id}','{net_name}','{status}','{ent_time}','{fail_result}')'''
     source_urlselect = '''select url from netfin_source_message'''
+    source_updateSpiderStatus = '''update netfin_spider set status = '{status}', ent_time = '{ent_time}' where net_name = \'{net_name}\''''
     url_list = []
 
     def __init__(self):
@@ -40,7 +41,7 @@ class NewsPipeline(object):
 
     def process_item(self, item, spider):
         if item['url'] in self.url_list:
-            print('______________重复新闻________________')
+            print('______________重复新闻________________'.encode("utf-8").decode("latin1"))
             return
         sqltext = self.source_messageInsert.format(title=pymysql.escape_string(item['title']),
                                                    url=pymysql.escape_string(item['url']),
@@ -76,7 +77,8 @@ class NewsPipeline(object):
                                                     time.strftime("%Y-%m-%d %H:%M:%S", time.localtime(time.time()))),
                                                 fail_result=pymysql.escape_string('finished')
                                                 )
-        # spider.log(sqltext)
+
         self.cursor.execute(sqltext)
+        # spider.log(sqltext)
         self.cursor.close()
         self.connect.close()

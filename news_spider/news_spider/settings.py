@@ -12,12 +12,12 @@ import random
 
 BOT_NAME = 'news_spider'
 
-CLOSESPIDER_ITEMCOUNT = 10
+CLOSESPIDER_ITEMCOUNT = 50  # 爬取多少个item后终止爬虫
 SPIDER_MODULES = ['news_spider.spiders']
 NEWSPIDER_MODULE = 'news_spider.spiders'
 LOG_LEVEL = 'ERROR'
 ROBOTSTXT_OBEY = False
-CONCURRENT_REQUESTS = 4
+CONCURRENT_REQUESTS = 3
 
 DOWNLOAD_DELAY = random.randint(1, 3)
 RETRY_ENABLED = False
@@ -27,7 +27,7 @@ DEFAULT_REQUEST_HEADERS = {
     "User-Agent": "Mozilla/5.0 (compatible; MSIE 9.0; Windows NT 6.1; Trident/5.0;",
     'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8'
 }
-SPLASH_URL = 'http://192.168.99.100:8050'
+SPLASH_URL = 'http://10.2.17.217:8050'
 DOWNLOADER_MIDDLEWARES = {
     'scrapy_splash.SplashCookiesMiddleware': 723,
     'scrapy_splash.SplashMiddleware': 725,

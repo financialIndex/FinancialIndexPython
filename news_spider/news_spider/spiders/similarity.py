@@ -38,7 +38,7 @@ class TextSimilarity:
         for i in range(0, len(list)):
             path = os.path.join(dirpath, list[i])
             if os.path.isfile(path):
-                with open(path, 'r') as f:
+                with open(path, 'r',encoding='utf8') as f:
                     text_list.append(f.read())
         return text_list
 

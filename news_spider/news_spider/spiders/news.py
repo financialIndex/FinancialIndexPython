@@ -30,6 +30,10 @@ class sina_news_Spider(scrapy.Spider):
         # 扫描的批次
         self.scan_id = str(time.time())
         self.category_urls = []
+        self.page = 1
+        # url
+        self.tech_url = 'http://news.sina.com.cn/roll/#pageid=153&lid=2515&page='
+        self.financial_url = 'http://news.sina.com.cn/roll/#pageid=153&lid=2516&page='
 
     # 将请求转换成splashRequest
     def start_requests(self):
@@ -46,8 +50,8 @@ class sina_news_Spider(scrapy.Spider):
         #     self.category_urls.append(
         #         'http://news.sina.com.cn/roll/#pageid={}&lid={}&page={}'.format(str(item['pageid']), str(item['s_id']),
         #                                                                         str(1)))
-        self.category_urls.append('http://news.sina.com.cn/roll/#pageid=153&lid=2515&page=1')
-        self.category_urls.append('http://news.sina.com.cn/roll/#pageid=153&lid=2516&page=1')
+        self.category_urls.append(self.tech_url + str(self.page))
+        self.category_urls.append(self.financial_url + str(self.page))
         # 解析各类别新闻URL
         for url in self.category_urls:
             yield SplashRequest(url, self.parse_page,
@@ -63,78 +67,160 @@ class sina_news_Spider(scrapy.Spider):
 
         url = response.url
         # 获取page
-        page = int(str(url)[-1])
-        page += 1
-        if page < self.maxPage:
-            next_url = str(url)[:-1] + str(page)
+        self.page += 1
+        if self.page < self.maxPage:
+            next_url = url[0:55] + str(self.page)
+            print(next_url)
             yield SplashRequest(next_url, self.parse_page, args={'wait': 1}, dont_filter=True)
 
     # 解析新闻内容
     def parse_detail(self, response):
         soup = BeautifulSoup(response.body)
         soup.prettify()
-        # 获取新闻标题
-        title = soup.select('h1[class="main-title"]')[0].get_text()
-        # 获取新闻发布时间
-        date = soup.select('span[class="date"]')[0].get_text()
-        # 获取新闻内容
-        article = soup.select('div[class="article"]')[0]
-        # 获取新闻关键词
-        keywords = []
         try:
-            a_list = soup.find_all('div', attrs={'class': 'keywords'})[0].find_all('a')
-            for item in a_list:
-                keywords.append(item.get_text())
-        except:
-            pass
-        # 获取新闻URL
-        url = response.url
-        # 删除图片和JS
-        try:
-            article.style.decompose()
-        except:
-            pass
-        try:
-            for i in article.find_all('script'):
-                i.decompose()
-            for i in article.find_all('div'):
-                i.decompose()
-            article.find('p', attrs={'class': 'article-editor'}).decompose()
-        except AttributeError:
-            article = article.get_text().strip()  # 去除空格
-        else:
-            article = article.get_text().strip()  # 去除空格
-        temp_keywords, abstract = sina_keyword_abstract(article, 4, 5)
-        if len(keywords) == 0:
-            keywords = temp_keywords
-        keywords = ' '.join(keywords)
-        print('-----------------------------------------------')
-        print('标题:', title)
-        print(article)
-        print('关键词:', keywords)
-        print('摘要:', end='\n')
-        print(abstract)
-        print('时间:', date)
-        print('新闻URL:', url)
-        print('相似度:', self.s.cal_similarities(article))
-        print('-----------------------------------------------')
+            # 获取新闻标题
+            title = soup.select('h1[class="main-title"]')[0].get_text()
+            # 获取新闻发布时间
+            date = time.strftime("%Y-%m-%d %H:%M:%S",
+                                 time.localtime(time.mktime(
+                                     time.strptime(soup.select('span[class="date"]')[0].get_text(),
+                                                   '%Y年%m月%d日 %H:%M'))))
+            # 终止条件
+            interval = time_cmp(float(self.scan_id), date)
+            if interval > self.days:
+                print('______________过时新闻________________'.encode("utf-8").decode("latin1"))
+                return
+            # 获取新闻内容
+            article = soup.select('div[class="article"]')[0]
+            # 获取新闻关键词
+            keywords = []
+            try:
+                a_list = soup.find_all('div', attrs={'class': 'keywords'})[0].find_all('a')
+                for item in a_list:
+                    keywords.append(item.get_text())
+            except:
+                pass
+            # 获取新闻URL
+            url = response.url
+            # 删除图片和JS
+            try:
+                article.style.decompose()
+            except:
+                pass
+            try:
+                for i in article.find_all('script'):
+                    i.decompose()
+                for i in article.find_all('div'):
+                    i.decompose()
+                article.find('p', attrs={'class': 'article-editor'}).decompose()
+            except AttributeError:
+                article = article.get_text().strip()  # 去除空格
+            else:
+                article = article.get_text().strip()  # 去除空格
+            temp_keywords, abstract = sina_keyword_abstract(article, 4, 5)
+            if len(keywords) == 0:
+                keywords = temp_keywords
+            keywords = ' '.join(keywords)
 
-        # 封装成item
-        similar_list = self.s.cal_similarities(article)
-        if max(similar_list) > self.threshold:
-            item = NewsItem()
-            item['title'] = title.strip()
-            item['url'] = url.strip()
-            item['net_name'] = '新浪网'
-            item['ent_time'] = time.strftime("%Y-%m-%d %H:%M:%S",
-                                             time.localtime(time.mktime(time.strptime(date, '%Y年%m月%d日 %H:%M'))))
+            print('-----------------------------------------------')
+            print('Title:', title.encode("utf-8").decode("latin1"))
+            print(article.encode("utf-8").decode("latin1"))
+            print('Keywords:', keywords.encode("utf-8").decode("latin1"))
+            print('Abstract:', end='\n')
+            print(abstract.encode("utf-8").decode("latin1"))
+            print('Time:', date)
+            print('news_URL:', url)
+            print('similarities:', self.s.cal_similarities(article))
+            print('-----------------------------------------------')
 
-            item['keyword'] = keywords.strip()
-            item['digest'] = abstract.strip()
-            item['content'] = article.strip()
-            item['hot_degree'] = ''
-            item['scan_id'] = str(self.scan_id)
-            return item
+            # 封装成item
+            similar_list = self.s.cal_similarities(article)
+            if max(similar_list) > self.threshold:
+                item = NewsItem()
+                item['title'] = title.strip()
+                item['url'] = url.strip()
+                item['net_name'] = '新浪网'
+                item['ent_time'] = date
+                item['keyword'] = keywords.strip()
+                item['digest'] = abstract.strip()
+                item['content'] = article.strip()
+                item['hot_degree'] = ''
+                item['scan_id'] = str(self.scan_id)
+                return item
+        except:
+            try:
+                # 获取新闻标题
+                title = soup.select('h1[id="artibodyTitle"]')[0].get_text()
+                # 获取新闻发布时间
+                date = time.strftime("%Y-%m-%d %H:%M:%S",
+                                     time.localtime(
+                                         time.mktime(
+                                             time.strptime(soup.select('span[id="pub_date"]')[0].get_text().strip(),
+                                                           '%Y-%m-%d %H:%M:%S'))))
+                # 终止条件
+                interval = time_cmp(float(self.scan_id), date)
+                if interval > self.days:
+                    print('______________过时新闻________________'.encode("utf-8").decode("latin1"))
+                    return
+                # 获取新闻内容
+                article = soup.select('div[id="artibody"]')[0]
+                # 获取新闻关键词
+                keywords = []
+                try:
+                    a_list = soup.find_all('p', attrs={'class': 'art_keywords'})[0].find_all('a')
+                    for item in a_list:
+                        keywords.append(item.get_text())
+                except:
+                    pass
+                # 获取新闻URL
+                url = response.url
+                # 删除图片和JS
+                try:
+                    article.style.decompose()
+                except:
+                    pass
+                try:
+                    for i in article.find_all('script'):
+                        i.decompose()
+                    for i in article.find_all('div'):
+                        i.decompose()
+                    article.find('p', attrs={'class': 'article-editor'}).decompose()
+                except AttributeError:
+                    article = article.get_text().strip()  # 去除空格
+                else:
+                    article = article.get_text().strip()  # 去除空格
+                temp_keywords, abstract = sina_keyword_abstract(article, 4, 5)
+                if len(keywords) == 0:
+                    keywords = temp_keywords
+                keywords = ' '.join(keywords)
+
+                print('-----------------------------------------------')
+                print('Title:', title.encode("utf-8").decode("latin1"))
+                print(article.encode("utf-8").decode("latin1"))
+                print('keywords:', keywords.encode("utf-8").decode("latin1"))
+                print('abstract:', end='\n')
+                print(abstract.encode("utf-8").decode("latin1"))
+                print('Time:', date)
+                print('news_URL:', url)
+                print('similarities:', self.s.cal_similarities(article))
+                print('-----------------------------------------------')
+
+                # 封装成item
+                similar_list = self.s.cal_similarities(article)
+                if max(similar_list) > self.threshold:
+                    item = NewsItem()
+                    item['title'] = title.strip()
+                    item['url'] = url.strip()
+                    item['net_name'] = '新浪网'
+                    item['ent_time'] = date
+                    item['keyword'] = keywords.strip()
+                    item['digest'] = abstract.strip()
+                    item['content'] = article.strip()
+                    item['hot_degree'] = ''
+                    item['scan_id'] = str(self.scan_id)
+                    return item
+            except:
+                pass
 
 
 ################################################################################
@@ -178,7 +264,7 @@ class leiphone_Spider(scrapy.Spider):
         # 终止条件
         interval = time_cmp(float(self.scan_id), date)
         if interval > self.days:
-            print('过时')
+            print('______________过时新闻________________'.encode("utf-8").decode("latin1"))
             return
 
         # 获取新闻标题
@@ -207,15 +293,15 @@ class leiphone_Spider(scrapy.Spider):
             keywords = temp_keywords
         keywords = ' '.join(keywords)
         print('-----------------------------------------------')
-        print('标题:', title)
-        print(leadword)
-        print(article)
-        print('关键词:', keywords)
-        print('摘要:', end='')
-        print(abstract)
-        print('时间:', date)
-        print('新闻URL:', url)
-        print('相似度:', self.s.cal_similarities(article))
+        print('title:', title.encode("utf-8").decode("latin1"))
+        print(leadword.encode("utf-8").decode("latin1"))
+        print(article.encode("utf-8").decode("latin1"))
+        print('keywords:', keywords.encode("utf-8").decode("latin1"))
+        print('abstract:', end='')
+        print(abstract.encode("utf-8").decode("latin1"))
+        print('Time:', date)
+        print('news_URL:', url)
+        print('similarities:', self.s.cal_similarities(article))
         print('-----------------------------------------------')
 
         # 封装成item
@@ -251,6 +337,7 @@ class _36_kr_Spider(scrapy.Spider):
         self.s = similarity.TextSimilarity(target_path, stopwords_path)
         # 扫描的批次
         self.scan_id = str(time.time())
+        self.page = 1
 
     def parse(self, response):
         data = json.loads(response.body)['data']
@@ -264,12 +351,11 @@ class _36_kr_Spider(scrapy.Spider):
             else:
                 yield SplashRequest('http://36kr.com/video/' + str(id), self.parse_video, args={'wait': 1},
                                     meta={'date': date})
-        url = response.url
         # 获取page
-        page = int(str(url)[-1])
-        page += 1
-        if page < self.maxPage:
-            next_url = str(url)[:-1] + str(page)
+        self.page += 1
+        if self.page < self.maxPage:
+            next_url = 'http://36kr.com/api/search-column/mainsite?per_page=20&page=' + str(self.page)
+            print(next_url)
             yield scrapy.Request(next_url, callback=self.parse)
 
     def parse_content(self, response):
@@ -281,7 +367,7 @@ class _36_kr_Spider(scrapy.Spider):
                                                                time.localtime(time.mktime(
                                                                    time.strptime(date, "%Y-%m-%dT%H:%M:%S+08:00")))))
         if interval > self.days:
-            print('过时')
+            print('______________过时新闻________________'.encode("utf-8").decode("latin1"))
             return
         # 获取标题
         title = soup.find('div', attrs={'class': 'mobile_article'}).find('h1').get_text()
@@ -304,16 +390,16 @@ class _36_kr_Spider(scrapy.Spider):
             keywords = raw_keywords
         keywords = ' '.join(keywords)
         print('-----------------------------------------------')
-        print('标题:', title)
-        print('总结:', summary)
-        print('关键词:', keywords)
-        print(article)
-        print('摘要:', end='')
-        print(abstract)
+        print('Title:', title.encode("utf-8").decode("latin1"))
+        print('Summary:', summary.encode("utf-8").decode("latin1"))
+        print('Keywords:', keywords.encode("utf-8").decode("latin1"))
+        print(article.encode("utf-8").decode("latin1"))
+        print('Abstract:', end='')
+        print(abstract.encode("utf-8").decode("latin1"))
         print('url:', response.url)
-        print('时间:', time.strftime("%Y-%m-%d %H:%M:%S",
+        print('Time:', time.strftime("%Y-%m-%d %H:%M:%S",
                                    time.localtime(time.mktime(time.strptime(date, "%Y-%m-%dT%H:%M:%S+08:00")))))
-        print('相似度', self.s.cal_similarities(article))
+        print('similarities', self.s.cal_similarities(article))
         print('-----------------------------------------------')
 
         # 封装成item
@@ -350,11 +436,11 @@ class _36_kr_Spider(scrapy.Spider):
                 keywords = raw_keywords
             keywords = ' '.join(keywords)
             print('-----------------------------------------------')
-            print('标题:', title)
-            print('关键词:', keywords)
+            print('Title:', title.encode("utf-8").decode("latin1"))
+            print('Keywords:', keywords.encode("utf-8").decode("latin1"))
             print(desc)
             print('url:', response.url)
-            print('时间:', time.strftime("%Y-%m-%d %H:%M:%S",
+            print('Time:', time.strftime("%Y-%m-%d %H:%M:%S",
                                        time.localtime(time.mktime(time.strptime(date, "%Y-%m-%dT%H:%M:%S+08:00")))))
             print('-----------------------------------------------')
         except:
@@ -390,8 +476,8 @@ class wechat_Spider(scrapy.Spider):
             title = soup.select('h2[class="rich_media_title"]')[0].get_text().strip()
             content = soup.select('div[class="rich_media_content "]')[0].get_text().strip()
             print('-----------------------------------------------')
-            print('标题：', title)
-            print(content)
+            print('Title', title.encode("utf-8").decode("latin1"))
+            print(content.encode("utf-8").decode("latin1"))
             print('-----------------------------------------------')
         except:
             pass
