@@ -7,6 +7,7 @@
 import pymysql
 from scrapy.utils.project import get_project_settings
 import time
+from news_spider.spiders import tools
 
 
 class NewsPipeline(object):
@@ -16,10 +17,15 @@ class NewsPipeline(object):
                                     values('{scan_id}','{net_name}','{status}','{ent_time}','{fail_result}')'''
     source_urlselect = '''select url from netfin_source_message'''
     source_updateSpiderStatus = '''update netfin_spider set status = '{status}', ent_time = '{ent_time}' where net_name = \'{net_name}\''''
+
     url_list = []
 
     def __init__(self):
+        # 初始化操作
+        cf = tools.load_config()
+        self.decoding = cf.get('Section', 'decoding')
         settings = get_project_settings()
+
         # 连接数据库
         self.connect = pymysql.connect(
             host=settings.get('MYSQL_HOST'),
@@ -41,7 +47,7 @@ class NewsPipeline(object):
 
     def process_item(self, item, spider):
         if item['url'] in self.url_list:
-            print('______________重复新闻________________'.encode("utf-8").decode("latin1"))
+            print('______________重复新闻________________'.encode("utf-8").decode(self.decoding))
             return
         sqltext = self.source_messageInsert.format(title=pymysql.escape_string(item['title']),
                                                    url=pymysql.escape_string(item['url']),
@@ -55,7 +61,6 @@ class NewsPipeline(object):
                                                    )
         # spider.log(sqltext)
         self.cursor.execute(sqltext)
-
         return item
 
     def open_spider(self, spider):

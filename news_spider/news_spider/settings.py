@@ -9,16 +9,18 @@
 #     https://doc.scrapy.org/en/latest/topics/downloader-middleware.html
 #     https://doc.scrapy.org/en/latest/topics/spider-middleware.html
 import random
+from news_spider.spiders import tools
+cf = tools.load_config()
 
 BOT_NAME = 'news_spider'
 
-CLOSESPIDER_ITEMCOUNT = 50  # 爬取多少个item后终止爬虫
+CLOSESPIDER_ITEMCOUNT = int(cf.get('Section', 'closespider_itemcount'))  # 爬取多少个item后终止爬虫
 SPIDER_MODULES = ['news_spider.spiders']
 NEWSPIDER_MODULE = 'news_spider.spiders'
 LOG_LEVEL = 'ERROR'
 ROBOTSTXT_OBEY = False
 CONCURRENT_REQUESTS = 3
-
+DOWNLOAD_TIMEOUT = 180
 DOWNLOAD_DELAY = random.randint(1, 3)
 RETRY_ENABLED = False
 COOKIES_ENABLED = False

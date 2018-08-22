@@ -10,9 +10,10 @@ class TextSimilarity:
     text_list = []
     stopwords_path = ''
 
-    def __init__(self, target_path, stopwords_path):
+    def __init__(self, target_path, stopwords_path, dict_path):
         self.text_list = self.get_target(target_path)
         self.stopwords_path = stopwords_path
+        jieba.load_userdict(dict_path)
 
     # 加载停用词
     def stopwordslist(self, path):
@@ -21,9 +22,9 @@ class TextSimilarity:
         return stopwords
 
     # 分词
-    def tokenization(self, text, stopwords_path):
+    def tokenization(self, text):
         seg_list = jieba.cut(text, cut_all=False)  # 精确模式
-        stopwords = self.stopwordslist(stopwords_path)
+        stopwords = self.stopwordslist(self.stopwords_path)
         seg_words = []
         # 去停用词
         for word in seg_list:
@@ -38,7 +39,7 @@ class TextSimilarity:
         for i in range(0, len(list)):
             path = os.path.join(dirpath, list[i])
             if os.path.isfile(path):
-                with open(path, 'r',encoding='utf8') as f:
+                with open(path, 'r', encoding='utf8') as f:
                     text_list.append(f.read())
         return text_list
 
@@ -46,8 +47,8 @@ class TextSimilarity:
     def cal_similarities(self, test_news):
         list = []
         for text in self.text_list:
-            list.append(self.tokenization(text, self.stopwords_path))
-        test_news = self.tokenization(test_news, self.stopwords_path)
+            list.append(self.tokenization(text))
+        test_news = self.tokenization(test_news)
         dictionary = corpora.Dictionary(list)
         new_vec = dictionary.doc2bow(test_news)
         corpus = [dictionary.doc2bow(i) for i in list]

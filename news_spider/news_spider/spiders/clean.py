@@ -7,6 +7,7 @@ Created on Thu Jul 12 09:13:20 2018
 import re
 import warnings
 from scrapy.utils.project import get_project_settings
+
 warnings.filterwarnings(action='ignore', category=UserWarning, module='gensim')
 import jieba
 import jieba.analyse
@@ -20,6 +21,12 @@ import pymysql
 import time
 import configparser
 import copy
+import news_spider.spiders.similarity as similarity
+from collections import Counter
+import codecs
+import pandas as pd
+import operator
+
 
 # 文档预处理
 def preprocess(doc, stoppath):
@@ -29,7 +36,7 @@ def preprocess(doc, stoppath):
     doc = str(doc)
     doc = re_h.sub('', doc)  # 去除html字符
     doc = re.sub('\s', '', doc)
-    jieba.load_userdict(load_config().get('Section', 'dict_path'))
+    jieba.load_userdict(load_config().get('Section', 'user_dict'))
     data = jieba.cut(doc)  # jieba分词
     stopwords = [line.strip() for line in open(stoppath, mode='r', encoding='UTF-8').readlines()]  # 加载停用词
     output = ''
@@ -143,10 +150,15 @@ def main_func(cur, stop_path, data_num, damping):
 
     source_urlselect = '''select url from netfin_filtered_message'''
     url_list = []
+
     # 获取数据库的URL
     cur.execute(source_urlselect)
     for r in cur:
         url_list.append(r[0])
+
+    # 初始化变量
+    keyword_search = pd.read_csv(load_config().get('Section', 'keyword_search'))
+    corpus = np.array(pd.read_csv(load_config().get('Section', 'corpus'), header=None)).tolist()
 
     for content in temp_content:
         # 避免插入重复新闻
@@ -155,6 +167,8 @@ def main_func(cur, stop_path, data_num, damping):
                 continue
         source_messageInsert = '''insert into netfin_filtered_message(title,url,net_name,ent_time,keyword,digest,content,hot_degree,scan_id)
                             values('{title}','{url}','{net_name}','{ent_time}','{keyword}','{digest}','{content}','{hot_degree}','{scan_id}')'''
+        source_getlastid = '''select last_insert_id()'''
+        source_keywordInsert = '''insert into netfin_keyword_search(id,keyword,n_type,ent_time) values('{id}','{keyword}','{n_type}','{ent_time}')'''
 
         sqltext = source_messageInsert.format(title=pymysql.escape_string(content[1]),
                                               url=pymysql.escape_string(content[2]),
@@ -168,18 +182,88 @@ def main_func(cur, stop_path, data_num, damping):
                                               scan_id=pymysql.escape_string(str(content[9]))
                                               )
         cur.execute(sqltext)
+        # 增加多关键字搜索功能
+        cur.execute(source_getlastid)
+        id = [r[0] for r in cur][0]
+
+        # 分词
+        seg_words = tokenization(content[7], load_config().get('Section', 'stopwords_path'),
+                                 load_config().get('Section', 'corpus'))
+        word_counts = dict(Counter(seg_words))
+        keywords_save = []  # 保存已提取的关键字
+        keywords_all = []
+        keywords_company = []  #
+        temp_company = []  # 临时保存公司关键字
+        for i in corpus:
+            if i[0] in word_counts.keys():
+                temp = {}
+                temp['id'] = id
+                temp['keyword'] = i[0]
+                temp['n_type'] = list(keyword_search[keyword_search['alas'] == i[0]]['n_type'])[0]
+                temp['ent_time'] = time.strftime("%Y-%m-%d %H:%M:%S", content[4].timetuple())
+                # 判断是否重复
+                if temp['keyword'] in keywords_save:
+                    continue
+                if temp['n_type'] == '企业':
+                    keywords_company.append(temp)
+                    temp_company.append(temp['keyword'])
+                else:
+                    temp['keyword'] = list(keyword_search[keyword_search['alas'] == i[0]]['individual'])[0]
+                    if temp['keyword'] not in keywords_save:
+                        keywords_all.append(temp)
+                keywords_save.append(temp['keyword'])
+        # 去掉重复元素
+        keywords_save = list(set(keywords_save))
+        if len(temp_company) != 0:
+            # 创建排序用的列表
+            sort_company = []
+            for i in temp_company:
+                temp = {}
+                temp['company'] = i
+                temp['count'] = word_counts[i]
+                sort_company.append(temp)
+            # 对公司词频排序
+            sort_company = sorted(sort_company, key=operator.itemgetter('count'), reverse=True)
+            # 添加词频最高且大于1的公司
+            if sort_company[0]['count'] > 1:
+                for i in keywords_company:
+                    if i['keyword'] == sort_company[0]['company']:
+                        i['keyword'] = \
+                            list(keyword_search[keyword_search['alas'] == i['keyword']]['individual'])[0]
+                        keywords_all.append(i)
+                        break
+
+        if len(keywords_all) == 0:
+            continue
+        # 切割原关键字
+        keywords_old = str(content[5]).split(' ')
+        for i in keywords_old:
+            if i not in keywords_save and i.strip() != '':
+                temp = {}
+                temp['id'] = id
+                temp['keyword'] = i
+                temp['n_type'] = '其他'
+                temp['ent_time'] = time.strftime("%Y-%m-%d %H:%M:%S", content[4].timetuple())
+                keywords_all.append(temp)
+
+        for i in keywords_all:
+            temp_sql = source_keywordInsert.format(id=pymysql.escape_string(str(i['id'])),
+                                                   keyword=pymysql.escape_string(i['keyword']),
+                                                   n_type=pymysql.escape_string(i['n_type']),
+                                                   ent_time=pymysql.escape_string(i['ent_time']))
+            cur.execute(temp_sql)
 
 
 def setup():
     settings = get_project_settings()
     conn = pymysql.connect(
-            host=settings.get('MYSQL_HOST'),
-            port=settings.get('MYSQL_PORT'),
-            db=settings.get('MYSQL_DBNAME'),
-            user=settings.get('MYSQL_USER'),
-            passwd=settings.get('MYSQL_PASSWD'),
-            charset='utf8',
-            use_unicode=True)  # 创建与mysql的连接
+        host=settings.get('MYSQL_HOST'),
+        port=settings.get('MYSQL_PORT'),
+        db=settings.get('MYSQL_DBNAME'),
+        user=settings.get('MYSQL_USER'),
+        passwd=settings.get('MYSQL_PASSWD'),
+        charset='utf8',
+        use_unicode=True)  # 创建与mysql的连接
     conn.autocommit(True)
     cur = conn.cursor()  # 获取操作游标，cursor为游标位置
     print('succeed!')
@@ -192,8 +276,29 @@ def setup():
     damping = 0.6  # 阻尼系数，0.5-1之间
     main_func(cur, stoppath, data_number, damping)
 
+
 # 读取配置文件
 def load_config():
     cf = configparser.ConfigParser()
     cf.read('news_spider/spiders/config.cfg')
     return cf
+
+
+# 加载停用词
+def stopwordslist(path):
+    stopwords = codecs.open(path, 'r', encoding='utf8').readlines()
+    stopwords = [w.strip() for w in stopwords]
+    return stopwords
+
+
+# 分词
+def tokenization(text, stopwords_path, dict_path):
+    jieba.load_userdict(dict_path)
+    seg_list = jieba.cut(text, cut_all=False)  # 精确模式
+    stopwords = stopwordslist(stopwords_path)
+    seg_words = []
+    # 去停用词
+    for word in seg_list:
+        if word not in stopwords:
+            seg_words.append(word)
+    return seg_words
